@@ -1,0 +1,89 @@
+#!/bin/sh
+
+set -ex
+
+install -d upgrade/
+
+PKGNAMES="$(sed -n -E 's/^package_info_([A-Za-z0-9_]+)\(\).*/\1/p' npbuild)"
+
+for PACKAGE_NAME in $PKGNAMES
+do
+    SRC_URL_OLD="$(sed -n "/^package_info_$PACKAGE_NAME() *{/,/^}/s/^[[:space:]]*PACKAGE_SRC_URL='\([^']*\)'.*/\1/p" npbuild)"
+
+    XXXX="${SRC_URL_OLD##*-}"
+
+    PACKAGE_VERSION="${XXXX%.tar.*}"
+
+    ###################################
+
+    case $PACKAGE_NAME in
+        libz)
+            BREW_PACKAGE_NAME='zlib'
+            ;;
+        libexpat)
+            BREW_PACKAGE_NAME='expat'
+            ;;
+        libopenssl)
+            BREW_PACKAGE_NAME='openssl@3'
+            ;;
+        autoconf_archive)
+            BREW_PACKAGE_NAME='autoconf-archive'
+            ;;
+        perl_XML_Parser)
+            BREW_PACKAGE_NAME='perl-xml-parser'
+            ;;
+        netsurf_buildsystem)
+            BREW_PACKAGE_NAME='netsurf-buildsystem'
+            ;;
+        *)  BREW_PACKAGE_NAME="$PACKAGE_NAME"
+    esac
+
+    ###################################
+
+    curl -LO "https://formulae.brew.sh/api/formula/$BREW_PACKAGE_NAME.json"
+
+    BREW_PACKAGE_VERS="$(jq -r '.versions.stable' "$BREW_PACKAGE_NAME.json")"
+
+    ###################################
+
+    if [ "$BREW_PACKAGE_VERS" = "$PACKAGE_VERSION" ] ; then
+        continue
+    fi
+
+    ###################################
+
+    SRC_URL_NEW=$(jq -r '.urls.stable.url'      "$BREW_PACKAGE_NAME.json")
+    SRC_SHA_NEW=$(jq -r '.urls.stable.checksum' "$BREW_PACKAGE_NAME.json")
+
+    if [ -z "$SRC_URL_NEW" ] || [ -z "$SRC_SHA_NEW" ] ; then
+        continue
+    fi
+
+    ###################################
+
+    SRC_URL_NEW_HOST="$(printf '%s\n' "$SRC_URL_NEW" | sed -E 's|^https?://([^/]+)/.*|\1|')"
+
+    if [ "$SRC_URL_NEW_HOST" = 'ftpmirror.gnu.org' ] ; then
+        SRC_URL_NEW="$(printf '%s\n' "$SRC_URL_NEW" | sed 's|ftpmirror\.gnu\.org|ftp.gnu.org/gnu|')"
+    fi
+
+    if [ "$PACKAGE_NAME" = libz ] ; then
+        SRC_URL_NEW="https://github.com/madler/zlib/releases/download/v$BREW_PACKAGE_VERS/zlib-$BREW_PACKAGE_VERS.tar.gz"
+    fi
+
+    ###################################
+
+    sed -i "/package_info_$PACKAGE_NAME()/,/^}/ s|^\([[:space:]]*PACKAGE_SRC_URL=\).*|\1'$SRC_URL_NEW'|" npbuild
+    sed -i "/package_info_$PACKAGE_NAME()/,/^}/ s|^\([[:space:]]*PACKAGE_SRC_SHA=\).*|\1'$SRC_SHA_NEW'|" npbuild
+
+    ###################################
+
+    tee "upgrade/$PACKAGE_NAME" <<EOF
+VERSION_OLD=$PACKAGE_VERSION
+VERSION_NEW=$BREW_PACKAGE_VERS
+SRC_URL_NEW=$SRC_URL_NEW
+SRC_SHA_NEW=$SRC_SHA_NEW
+EOF
+done
+
+git diff npbuild

@@ -1,0 +1,123 @@
+name: check if packages are buildable
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches: [ master, dev ]
+  pull_request:
+    branches: [ master, dev ]
+
+jobs:
+
+  find-packages:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - id: packages
+        run: |
+          set -ex
+          NAMES="$(sed -n -E 's/^package_info_([A-Za-z0-9_]+)\(\).*/\1/p' npbuild | jq -Rnc '[inputs]')"
+          printf 'names=%s\n' "$NAMES" >> $GITHUB_OUTPUT
+
+    outputs:
+      names: ${{ steps.packages.outputs.names }}
+
+
+  ubuntu:
+
+    needs: find-packages
+
+    strategy:
+
+      fail-fast: false
+
+      matrix:
+        tag: ['22.04', '24.04', '26.04']
+        pkg: ${{ fromJson(needs.find-packages.outputs.names) }}
+
+    runs-on: ubuntu-latest
+
+    container: ubuntu:${{ matrix.tag }}
+
+    env:
+      CFLAGS_FOR_BUILD: -Doff64_t=off_t
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - run: apt -y update
+      - run: apt -y install curl gcc libc-dev linux-headers-generic
+
+      - run: curl -LO https://raw.githubusercontent.com/leleliu008/ndk-pkg/master/ndk-pkg
+      - run: chmod +x ndk-pkg
+
+      - run: ./ndk-pkg about
+      - run: ./ndk-pkg setup -y
+      - run: ./ndk-pkg sysinfo
+
+      - run: ./npbuild --uppm ~/.ndk-pkg/core/uppm ${{ matrix.pkg }}
+
+
+  alpine:
+
+    needs: find-packages
+
+    strategy:
+
+      fail-fast: false
+
+      matrix:
+        pkg: ${{ fromJson(needs.find-packages.outputs.names) }}
+
+    runs-on: ubuntu-latest
+
+    container: alpine
+
+    env:
+      CFLAGS_FOR_BUILD: -Doff64_t=off_t
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - run: apk update
+      - run: apk add gcc libc-dev linux-headers
+
+      - run: wget https://raw.githubusercontent.com/leleliu008/ndk-pkg/master/ndk-pkg
+      - run: chmod +x ndk-pkg
+
+      - run: ./ndk-pkg about
+      - run: ./ndk-pkg setup
+      - run: ./ndk-pkg sysinfo
+
+      - run: ./npbuild --uppm ~/.ndk-pkg/core/uppm ${{ matrix.pkg }}
+
+
+  macos:
+
+    needs: find-packages
+
+    strategy:
+
+      fail-fast: false
+
+      matrix:
+        runner: [15, 26]
+        pkg: ${{ fromJson(needs.find-packages.outputs.names) }}
+
+    runs-on: macos-${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - run: curl -LO https://raw.githubusercontent.com/leleliu008/ndk-pkg/master/ndk-pkg
+      - run: chmod +x ndk-pkg
+
+      - run: ./ndk-pkg about
+      - run: ./ndk-pkg setup
+      - run: ./ndk-pkg sysinfo
+
+      - run: ./npbuild --uppm ~/.ndk-pkg/core/uppm ${{ matrix.pkg }}

@@ -1,0 +1,97 @@
+name: ndk-pkg
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches: [ master, dev ]
+  pull_request:
+    branches: [ master, dev ]
+
+jobs:
+
+  ubuntu:
+
+    strategy:
+
+      fail-fast: false
+
+      matrix:
+        tag: ['22.04', '24.04', '26.04']
+        pkg: [libsass, libpaper, libqalculate, gindent, rav1e, lynx]
+
+    runs-on: ubuntu-latest
+
+    container: ubuntu:${{ matrix.tag }}
+
+    env:
+      CFLAGS_FOR_BUILD: -Doff64_t=off_t
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - run: apt -y update
+      - run: apt -y install curl
+
+      - run: curl -LO https://raw.githubusercontent.com/leleliu008/ndk-pkg/master/ndk-pkg
+      - run: chmod +x ndk-pkg
+
+      - run: ./ndk-pkg about
+      - run: ./ndk-pkg setup
+      - run: ./ndk-pkg sysinfo
+      - run: ./ndk-pkg update
+      - run: ./ndk-pkg install ${{ matrix.pkg }}
+
+
+  alpine:
+
+    strategy:
+
+      fail-fast: false
+
+      matrix:
+        pkg: [libsass, libpaper, libqalculate, gindent, rav1e, lynx]
+
+    runs-on: ubuntu-latest
+
+    container: alpine
+
+    env:
+      CFLAGS_FOR_BUILD: -Doff64_t=off_t
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - run: wget https://raw.githubusercontent.com/leleliu008/ndk-pkg/master/ndk-pkg
+      - run: chmod +x ndk-pkg
+
+      - run: ./ndk-pkg about
+      - run: ./ndk-pkg setup
+      - run: ./ndk-pkg sysinfo
+      - run: ./ndk-pkg update
+      - run: ./ndk-pkg install ${{ matrix.pkg }}
+
+
+  macos:
+
+    strategy:
+
+      fail-fast: false
+
+      matrix:
+        runner: [15, 26]
+        pkg: [libsass, libpaper, libqalculate, gindent, rav1e, lynx]
+
+    runs-on: macos-${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - run: curl -LO https://raw.githubusercontent.com/leleliu008/ndk-pkg/master/ndk-pkg
+      - run: chmod +x ndk-pkg
+
+      - run: ./ndk-pkg about
+      - run: ./ndk-pkg setup
+      - run: ./ndk-pkg sysinfo
+      - run: ./ndk-pkg update
+      - run: ./ndk-pkg install ${{ matrix.pkg }}
